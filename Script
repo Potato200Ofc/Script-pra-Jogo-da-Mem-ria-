@@ -1,0 +1,759 @@
+-- LocalScript (Coloque em StarterPlayerScripts ou StarterGui)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Controle de ESP, Cores e Clones
+local activeEspConnections = {}
+local activeBeaconsLinks = {}
+local alreadyNotifiedPairs = {}
+local espEnabled = false
+
+local MAX_LINK_DISTANCE = 5 -- Limite rigoroso de alcance ajustado para 5 studs
+
+local cardTypeColors = {
+	SHIELD = Color3.fromRGB(50, 180, 255),  -- Azul
+	BULLET = Color3.fromRGB(255, 255, 50),  -- Amarelo
+	GUN    = Color3.fromRGB(128, 128, 128)  -- Cinza
+}
+
+-- 1. ScreenGui Principal (Menu Flutuante)
+local menuGui = Instance.new("ScreenGui")
+menuGui.Name = "CardToolsMenuGui"
+menuGui.ResetOnSpawn = false
+menuGui.Parent = playerGui
+
+-- 2. ScreenGui Separado exclusivo para o ESP das Cartas
+local espGui = Instance.new("ScreenGui")
+espGui.Name = "CardToolsEspGui"
+espGui.ResetOnSpawn = false
+espGui.Parent = playerGui
+
+-- Bolinha Flutuante para Abrir/Fechar o Menu (Com Coroa e Sparkles)
+local toggleCircle = Instance.new("TextButton")
+toggleCircle.Name = "ToggleCircle"
+toggleCircle.Size = UDim2.new(0, 48, 0, 48)
+toggleCircle.Position = UDim2.new(0.05, 0, 0.4, 0)
+toggleCircle.BackgroundColor3 = Color3.fromRGB(218, 165, 32) -- Dourado Luxuoso
+toggleCircle.Text = "👑"
+toggleCircle.TextSize = 22
+toggleCircle.Active = true
+toggleCircle.Draggable = true
+toggleCircle.Parent = menuGui
+
+local circleCorner = Instance.new("UICorner")
+circleCorner.CornerRadius = UDim.new(1, 0)
+circleCorner.Parent = toggleCircle
+
+local circleStroke = Instance.new("UIStroke")
+circleStroke.Color = Color3.fromRGB(255, 223, 0)
+circleStroke.Thickness = 3
+circleStroke.Parent = toggleCircle
+
+local circleSparkles = Instance.new("Sparkles")
+circleSparkles.SparkleColor = Color3.fromRGB(255, 215, 0)
+circleSparkles.Parent = toggleCircle
+
+-- Janela Principal do Menu (Moldura Dourada como Imagem de Fundo Principal)
+local mainFrame = Instance.new("ImageLabel")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 360, 0, 400)
+mainFrame.Position = UDim2.new(0.05, 50, 0.3, 0)
+mainFrame.BackgroundTransparency = 1
+mainFrame.Image = "rbxassetid://110477429873017"
+mainFrame.ScaleType = Enum.ScaleType.Stretch
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Visible = true
+mainFrame.Parent = menuGui
+
+-- Miolo Fundo Amarelo (Dimensionado com margem interna exata para a moldura)
+local yellowBackground = Instance.new("Frame")
+yellowBackground.Name = "YellowBackground"
+yellowBackground.Size = UDim2.new(0, 210, 0, 270)
+yellowBackground.Position = UDim2.new(0.5, -105, 0.5, -135)
+yellowBackground.BackgroundColor3 = Color3.fromRGB(255, 215, 0) -- Fundo amarelo vivo
+yellowBackground.BorderSizePixel = 0
+yellowBackground.ZIndex = 1
+yellowBackground.Parent = mainFrame
+
+local yellowCorner = Instance.new("UICorner")
+yellowCorner.CornerRadius = UDim.new(0, 8)
+yellowCorner.Parent = yellowBackground
+
+-- Efeito de Sparkles Dourados no Menu Principal
+local mainSparkles = Instance.new("Sparkles")
+mainSparkles.SparkleColor = Color3.fromRGB(255, 215, 0)
+mainSparkles.Parent = mainFrame
+
+-- Título Principal: "VERSION PRO MAX LEGEND" centralizado e perfeitamente visível
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, -16, 0, 35)
+titleLabel.Position = UDim2.new(0, 8, 0, 12)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "👑 VERSION PRO MAX LEGEND 👑"
+titleLabel.TextColor3 = Color3.fromRGB(255, 223, 0)
+titleLabel.TextScaled = true
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.ZIndex = 2
+titleLabel.Parent = yellowBackground
+
+local titleStroke = Instance.new("UIStroke")
+titleStroke.Color = Color3.fromRGB(40, 30, 0)
+titleStroke.Thickness = 2
+titleStroke.Parent = titleLabel
+
+toggleCircle.MouseButton1Click:Connect(function()
+	mainFrame.Visible = not mainFrame.Visible
+end)
+
+-- Botão 1: Clone Card
+local cloneCardButton = Instance.new("TextButton")
+cloneCardButton.Name = "CloneCardButton"
+cloneCardButton.Size = UDim2.new(1, -20, 0, 42)
+cloneCardButton.Position = UDim2.new(0, 10, 0, 62)
+cloneCardButton.BackgroundColor3 = Color3.fromRGB(32, 190, 190)
+cloneCardButton.Text = "Clone Card"
+cloneCardButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+cloneCardButton.Font = Enum.Font.SourceSansBold
+cloneCardButton.TextSize = 16
+cloneCardButton.ZIndex = 2
+cloneCardButton.Parent = yellowBackground
+
+local btn1Corner = Instance.new("UICorner")
+btn1Corner.CornerRadius = UDim.new(0, 8)
+btn1Corner.Parent = cloneCardButton
+
+local btn1Stroke = Instance.new("UIStroke")
+btn1Stroke.Color = Color3.fromRGB(20, 120, 120)
+btn1Stroke.Thickness = 2
+btn1Stroke.Parent = cloneCardButton
+
+-- Botão 2: Toggle ESP
+local espToggleButton = Instance.new("TextButton")
+espToggleButton.Name = "EspToggleButton"
+espToggleButton.Size = UDim2.new(1, -20, 0, 42)
+espToggleButton.Position = UDim2.new(0, 10, 0, 116)
+espToggleButton.BackgroundColor3 = Color3.fromRGB(200, 45, 45)
+espToggleButton.Text = "ESP: DESLIGADO"
+espToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+espToggleButton.Font = Enum.Font.SourceSansBold
+espToggleButton.TextSize = 16
+espToggleButton.ZIndex = 2
+espToggleButton.Parent = yellowBackground
+
+local btn2Corner = Instance.new("UICorner")
+btn2Corner.CornerRadius = UDim.new(0, 8)
+btn2Corner.Parent = espToggleButton
+
+local btn2Stroke = Instance.new("UIStroke")
+btn2Stroke.Color = Color3.fromRGB(130, 25, 25)
+btn2Stroke.Thickness = 2
+btn2Stroke.Parent = espToggleButton
+
+-- Botão 3: Exclude Esp(All)
+local excludeEspButton = Instance.new("TextButton")
+excludeEspButton.Name = "ExcludeEspButton"
+excludeEspButton.Size = UDim2.new(1, -20, 0, 42)
+excludeEspButton.Position = UDim2.new(0, 10, 0, 170)
+excludeEspButton.BackgroundColor3 = Color3.fromRGB(150, 40, 165)
+excludeEspButton.Text = "Exclude Esp(All)"
+excludeEspButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+excludeEspButton.Font = Enum.Font.SourceSansBold
+excludeEspButton.TextSize = 16
+excludeEspButton.ZIndex = 2
+excludeEspButton.Parent = yellowBackground
+
+local btn3Corner = Instance.new("UICorner")
+btn3Corner.CornerRadius = UDim.new(0, 8)
+btn3Corner.Parent = excludeEspButton
+
+local btn3Stroke = Instance.new("UIStroke")
+btn3Stroke.Color = Color3.fromRGB(90, 20, 105)
+btn3Stroke.Thickness = 2
+btn3Stroke.Parent = excludeEspButton
+
+-- Identifica a pasta da mesa/arena onde o jogador está no momento
+local function getPlayerCardsFolder()
+	local matchOff = Workspace:FindFirstChild("MatchOff_Arena")
+	if not matchOff then return nil end
+	
+	local cardsFolder = matchOff:FindFirstChild("Cards")
+	if cardsFolder then
+		return cardsFolder
+	end
+	return nil
+end
+
+-- Posição segura do centro da carta
+local function getCardPosition(cardInstance)
+	if not cardInstance or not cardInstance.Parent then return nil end
+	if cardInstance:IsA("Model") then
+		return cardInstance:GetPivot().Position
+	elseif cardInstance:IsA("BasePart") then
+		return cardInstance.Position
+	end
+	return nil
+end
+
+-- Declaração antecipada
+local removeSingleEsp
+
+-- Função para limpar todos os feixes conectores entre pares
+local function clearAllConnectingBeacons()
+	for key, linkPart in pairs(activeBeaconsLinks) do
+		if linkPart then linkPart:Destroy() end
+	end
+	activeBeaconsLinks = {}
+	alreadyNotifiedPairs = {}
+end
+
+-- Função para limpar todos os ESPs, Billboards, Auras, Beacons, Sparkles e Luzes
+local function clearAllEspAndAuras()
+	for card, _ in pairs(activeEspConnections) do
+		removeSingleEsp(card)
+	end
+	activeEspConnections = {}
+	clearAllConnectingBeacons()
+	espGui:ClearAllChildren()
+
+	local cardsFolder = getPlayerCardsFolder()
+	if cardsFolder then
+		for _, card in ipairs(cardsFolder:GetChildren()) do
+			local hl = card:FindFirstChild("CardEspHighlight")
+			if hl then hl:Destroy() end
+			local beacon = card:FindFirstChild("CardBeacon")
+			if beacon then beacon:Destroy() end
+			local playerClone = card:FindFirstChild("PlayerPointingClone")
+			if playerClone then playerClone:Destroy() end
+			local primaryPart = card:IsA("Model") and (card.PrimaryPart or card:FindFirstChildWhichIsA("BasePart")) or (card:IsA("BasePart") and card)
+			if primaryPart then
+				local sp = primaryPart:FindFirstChild("CardSparkles")
+				if sp then sp:Destroy() end
+				local light = primaryPart:FindFirstChild("CardPointLight")
+				if light then light:Destroy() end
+			end
+		end
+	end
+end
+
+removeSingleEsp = function(cardInstance)
+	if activeEspConnections[cardInstance] then
+		local data = activeEspConnections[cardInstance]
+		if data.RenderConnection then data.RenderConnection:Disconnect() end
+		if data.AncestryConnection then data.AncestryConnection:Disconnect() end
+		if data.Billboard then data.Billboard:Destroy() end
+		if data.Highlight then data.Highlight:Destroy() end
+		if data.Beacon then data.Beacon:Destroy() end
+		if data.Sparkles then data.Sparkles:Destroy() end
+		if data.PointLight then data.PointLight:Destroy() end
+		if data.PlayerClone then data.PlayerClone:Destroy() end
+		activeEspConnections[cardInstance] = nil
+	end
+end
+
+espToggleButton.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	if espEnabled then
+		espToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
+		espToggleButton.Text = "ESP: LIGADO"
+	else
+		espToggleButton.BackgroundColor3 = Color3.fromRGB(200, 45, 45)
+		espToggleButton.Text = "ESP: DESLIGADO"
+		clearAllEspAndAuras()
+	end
+end)
+
+-- Ação do botão Exclude Esp(All)
+excludeEspButton.MouseButton1Click:Connect(function()
+	clearAllEspAndAuras()
+end)
+
+-- Função para detectar a carta que o jogador está pisando
+local function getCardFromPath()
+	local cardsFolder = getPlayerCardsFolder()
+	if not cardsFolder then return nil end
+
+	local character = player.Character or player.CharacterAdded:Wait()
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return nil end
+
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = {character}
+
+	local raycastResult = Workspace:Raycast(rootPart.Position, Vector3.new(0, -25, 0), raycastParams)
+	if raycastResult and raycastResult.Instance then
+		local hitPart = raycastResult.Instance
+		local current = hitPart
+		while current and current ~= Workspace do
+			if current.Parent == cardsFolder then
+				return current
+			end
+			current = current.Parent
+		end
+	end
+	
+	return nil
+end
+
+local function fireRemote()
+	pcall(function()
+		local memoryKill = ReplicatedStorage:WaitForChild("MemoryKill", 2)
+		if memoryKill then
+			local remotes = memoryKill:WaitForChild("Remotes", 2)
+			if remotes then
+				local cardJumpRequest = remotes:WaitForChild("CardJumpRequest", 2)
+				if cardJumpRequest then
+					cardJumpRequest:FireServer()
+				end
+			end
+		end
+	end)
+end
+
+-- Aplicando vidro translúcido e deslocamento exato de 0.1 studs acima da carta original
+local function applyGlassAndPosition(clone)
+	if clone:IsA("Model") then
+		for _, descendant in ipairs(clone:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Material = Enum.Material.Glass
+				descendant.Transparency = 0.3
+			end
+		end
+		local currentPivot = clone:GetPivot()
+		clone:PivotTo(currentPivot + Vector3.new(0, 0.1, 0))
+	elseif clone:IsA("BasePart") then
+		clone.Material = Enum.Material.Glass
+		clone.Transparency = 0.3
+		clone.Position = clone.Position + Vector3.new(0, 0.1, 0)
+	end
+end
+
+-- Função auxiliar para checar se a carta está visível
+local function isCardVisible(cardInstance)
+	if cardInstance:IsA("BasePart") then
+		return cardInstance.Transparency < 1
+	elseif cardInstance:IsA("Model") then
+		for _, desc in ipairs(cardInstance:GetDescendants()) do
+			if desc:IsA("BasePart") and desc.Transparency < 1 then
+				return true
+			end
+		end
+		return false
+	end
+	return true
+end
+
+-- Ação do botão Clone Card com rastreamento de desaparecimento da original
+cloneCardButton.MouseButton1Click:Connect(function()
+	fireRemote()
+	local targetObject = getCardFromPath()
+	if targetObject then
+		task.wait(0.5)
+		local clone = targetObject:Clone()
+		applyGlassAndPosition(clone)
+		clone.Parent = targetObject.Parent
+
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			if not targetObject or not targetObject.Parent or not targetObject:IsDescendantOf(Workspace) or not isCardVisible(targetObject) then
+				if clone and clone.Parent then
+					clone:Destroy()
+				end
+				if connection then
+					connection:Disconnect()
+				end
+			end
+		end)
+	end
+end)
+
+-- Busca precisa da carta exata na mesa do jogador
+local function findExactCard(cardId)
+	local cardsFolder = getPlayerCardsFolder()
+	if not cardsFolder then return nil end
+
+	local searchId = tostring(cardId)
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+	local candidateCards = {}
+	for _, card in ipairs(cardsFolder:GetChildren()) do
+		if card.Name == searchId or card.Name == "Card_" .. searchId then
+			table.insert(candidateCards, card)
+		end
+	end
+
+	if #candidateCards == 0 then
+		return nil
+	elseif #candidateCards == 1 then
+		return candidateCards[1]
+	else
+		if not rootPart then return candidateCards[1] end
+		local closestCard = nil
+		local shortestDist = math.huge
+		for _, card in ipairs(candidateCards) do
+			local primaryPart = card:IsA("Model") and (card.PrimaryPart or card:FindFirstChildWhichIsA("BasePart")) or (card:IsA("BasePart") and card)
+			if primaryPart then
+				local dist = (primaryPart.Position - rootPart.Position).Magnitude
+				if dist < shortestDist then
+					shortestDist = dist
+					closestCard = card
+				end
+			end
+		end
+		return closestCard or candidateCards[1]
+	end
+end
+
+-- Cria o mini clone brilhante em Neon apontando e segurando a réplica da carta com suporte a R6 e R15
+local function createPlayerPointingClone(cardInstance, targetColor)
+	local char = player.Character
+	if not char then return nil end
+
+	char.Archivable = true
+	local charClone = char:Clone()
+	char.Archivable = false
+
+	charClone.Name = "PlayerPointingClone"
+	
+	for _, desc in ipairs(charClone:GetDescendants()) do
+		if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("ModuleScript") then
+			desc:Destroy()
+		elseif desc:IsA("BasePart") then
+			desc.Anchored = true
+			desc.CanCollide = false
+			desc.CastShadow = false
+			desc.Material = Enum.Material.Neon
+			desc.Color = targetColor
+			desc.Transparency = 0.2
+		elseif desc:IsA("Decal") or desc:IsA("Texture") then
+			desc:Destroy()
+		elseif desc:IsA("BillboardGui") or desc:IsA("Highlight") then
+			desc:Destroy()
+		end
+	end
+
+	local rightHand = charClone:FindFirstChild("RightHand") or charClone:FindFirstChild("Right Arm") or charClone:FindFirstChild("RightUpperArm")
+	if rightHand then
+		local cardReplica = Instance.new("Part")
+		cardReplica.Name = "HeldCardReplica"
+		cardReplica.Size = Vector3.new(0.8, 1.2, 0.1)
+		cardReplica.Material = Enum.Material.Neon
+		cardReplica.Color = targetColor
+		cardReplica.Transparency = 0.1
+		cardReplica.CanCollide = false
+		cardReplica.CastShadow = false
+		cardReplica.CFrame = rightHand.CFrame * CFrame.new(0, -0.8, 0) * CFrame.Angles(math.rad(90), 0, 0)
+		cardReplica.Parent = charClone
+		
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = rightHand
+		weld.Part1 = cardReplica
+		weld.Parent = cardReplica
+	end
+
+	local humanoid = charClone:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+		local isR15 = charClone:FindFirstChild("UpperTorso") ~= nil
+		local animId = isR15 and "rbxassetid://12521007694" or "rbxassetid://128853357"
+		
+		pcall(function()
+			local animObj = Instance.new("Animation")
+			animObj.AnimationId = animId
+			local animationTrack = animator:LoadAnimation(animObj)
+			animationTrack.Priority = Enum.AnimationPriority.Action
+			animationTrack:Play()
+			animationTrack.TimePosition = 0.5
+			animationTrack:AdjustSpeed(0)
+		end)
+	end
+
+	charClone.Parent = cardInstance
+	return charClone
+end
+
+-- Gerenciamento de Feixe Conector (Beacon) e Texto "FOUNDED CARD!!" flutuando sobre as cartas (limite de 5 studs)
+local function updateInterCardLinks()
+	if not espEnabled then
+		clearAllConnectingBeacons()
+		return
+	end
+
+	local groupedCards = {}
+	for cardInstance, data in pairs(activeEspConnections) do
+		if cardInstance and cardInstance.Parent and cardInstance:IsDescendantOf(Workspace) and isCardVisible(cardInstance) then
+			local cardType = data.CardType
+			if cardType then
+				groupedCards[cardType] = groupedCards[cardType] or {}
+				table.insert(groupedCards[cardType], cardInstance)
+			end
+		end
+	end
+
+	local neededLinks = {}
+
+	for cardType, cards in pairs(groupedCards) do
+		if #cards >= 2 then
+			local bestPair = nil
+			local shortestDistance = math.huge
+
+			for i = 1, #cards do
+				for j = i + 1, #cards do
+					local posA = getCardPosition(cards[i])
+					local posB = getCardPosition(cards[j])
+					if posA and posB then
+						local dist = (posA - posB).Magnitude
+						if dist <= MAX_LINK_DISTANCE and dist < shortestDistance then
+							shortestDistance = dist
+							bestPair = {cards[i], cards[j], cardType, dist}
+						end
+					end
+				end
+			end
+
+			if bestPair then
+				local cardA, cardB, cType, dist = unpack(bestPair)
+				local pairKey = tostring(cardA:GetDebugId()) .. "_" .. tostring(cardB:GetDebugId())
+				neededLinks[pairKey] = {CardA = cardA, CardB = cardB, Color = cardTypeColors[cType] or Color3.fromRGB(255, 255, 255), Type = cType}
+			end
+		end
+	end
+
+	for key, linkPart in pairs(activeBeaconsLinks) do
+		if not neededLinks[key] then
+			if linkPart then linkPart:Destroy() end
+			activeBeaconsLinks[key] = nil
+			alreadyNotifiedPairs[key] = nil
+		end
+	end
+
+	for key, data in pairs(neededLinks) do
+		local posA = getCardPosition(data.CardA)
+		local posB = getCardPosition(data.CardB)
+
+		if posA and posB then
+			local linkPart = activeBeaconsLinks[key]
+			if not linkPart or not linkPart.Parent then
+				linkPart = Instance.new("Part")
+				linkPart.Name = "InterCardBeaconLink"
+				linkPart.Material = Enum.Material.Neon
+				linkPart.Transparency = 0.3
+				linkPart.Anchored = true
+				linkPart.CanCollide = false
+				linkPart.CastShadow = false
+				linkPart.Parent = Workspace
+				activeBeaconsLinks[key] = linkPart
+
+				local foundedBillboard = Instance.new("BillboardGui")
+				foundedBillboard.Name = "FoundedBillboard"
+				foundedBillboard.Size = UDim2.new(0, 200, 0, 50)
+				foundedBillboard.StudsOffset = Vector3.new(0, 3, 0)
+				foundedBillboard.AlwaysOnTop = true
+				foundedBillboard.Adornee = linkPart
+				foundedBillboard.Parent = linkPart
+
+				local foundedLabel = Instance.new("TextLabel")
+				foundedLabel.Size = UDim2.new(1, 0, 1, 0)
+				foundedLabel.BackgroundTransparency = 1
+				foundedLabel.Text = "💥 FOUNDED CARD!! 💥"
+				foundedLabel.TextColor3 = data.Color
+				foundedLabel.TextScaled = true
+				foundedLabel.Font = Enum.Font.SourceSansBold
+				foundedLabel.Parent = foundedBillboard
+
+				local stroke = Instance.new("UIStroke")
+				stroke.Color = Color3.fromRGB(0, 0, 0)
+				stroke.Thickness = 2
+				stroke.Parent = foundedLabel
+			end
+
+			local distance = (posA - posB).Magnitude
+			linkPart.Size = Vector3.new(0.6, 0.6, distance)
+			linkPart.CFrame = CFrame.new(posA:Lerp(posB, 0.5), posB)
+			linkPart.Color = data.Color
+		end
+	end
+end
+
+RunService.RenderStepped:Connect(function()
+	if espEnabled then
+		updateInterCardLinks()
+	end
+end)
+
+-- Função para gerar o efeito de explosão de partículas na revelação
+local function triggerCardExplosion(cardInstance, targetColor)
+	local primaryPart = cardInstance:IsA("Model") and (cardInstance.PrimaryPart or cardInstance:FindFirstChildWhichIsA("BasePart")) or (cardInstance:IsA("BasePart") and cardInstance)
+	if not primaryPart then return end
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "CardExplosionEffect"
+	emitter.Color = ColorSequence.new(targetColor)
+	emitter.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 2.5)})
+	emitter.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
+	emitter.Lifetime = NumberRange.new(0.6, 1.2)
+	emitter.Rate = 0
+	emitter.Speed = NumberRange.new(12, 28)
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Parent = primaryPart
+
+	emitter:Emit(50)
+
+	task.delay(2, function()
+		if emitter and emitter.Parent then
+			emitter:Destroy()
+		end
+	end)
+end
+
+-- Criador de ESP, Textos RGB, Aura, Beacon, Sparkles, PointLight, Clone Neon apontando e Explosão
+local function createCardEsp(cardInstance, cardType)
+	if not cardInstance or not espEnabled then return end
+
+	local upperType = string.upper(tostring(cardType))
+	local targetColor = cardTypeColors[upperType] or Color3.fromRGB(255, 255, 255)
+
+	if activeEspConnections[cardInstance] then
+		if activeEspConnections[cardInstance].Highlight then
+			activeEspConnections[cardInstance].Highlight.FillColor = targetColor
+			activeEspConnections[cardInstance].Highlight.OutlineColor = targetColor
+		end
+		if activeEspConnections[cardInstance].Beacon then
+			activeEspConnections[cardInstance].Beacon.Color = targetColor
+		end
+		if activeEspConnections[cardInstance].Sparkles then
+			activeEspConnections[cardInstance].Sparkles.SparkleColor = targetColor
+		end
+		if activeEspConnections[cardInstance].PointLight then
+			activeEspConnections[cardInstance].PointLight.Color = targetColor
+		end
+		return
+	end
+
+	triggerCardExplosion(cardInstance, targetColor)
+
+	local primaryPart = cardInstance:IsA("Model") and (cardInstance.PrimaryPart or cardInstance:FindFirstChildWhichIsA("BasePart")) or (cardInstance:IsA("BasePart") and cardInstance)
+
+	local playerClone = createPlayerPointingClone(cardInstance, targetColor)
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "CardEspHighlight"
+	highlight.Adornee = cardInstance
+	highlight.FillColor = targetColor
+	highlight.OutlineColor = targetColor
+	highlight.FillTransparency = 0.3
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = cardInstance
+
+	local sparkles = Instance.new("Sparkles")
+	sparkles.Name = "CardSparkles"
+	sparkles.SparkleColor = targetColor
+	if primaryPart then
+		sparkles.Parent = primaryPart
+	end
+
+	local pointLight = Instance.new("PointLight")
+	pointLight.Name = "CardPointLight"
+	pointLight.Color = targetColor
+	pointLight.Brightness = 3
+	pointLight.Range = 12
+	if primaryPart then
+		pointLight.Parent = primaryPart
+	end
+
+	local beacon = Instance.new("Part")
+	beacon.Name = "CardBeacon"
+	beacon.Size = Vector3.new(3, 300, 3)
+	beacon.Material = Enum.Material.Neon
+	beacon.Color = targetColor
+	beacon.Transparency = 0.4
+	beacon.Anchored = true
+	beacon.CanCollide = false
+	beacon.CastShadow = false
+	beacon.Parent = cardInstance
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESP_" .. cardInstance.Name
+	billboard.Size = UDim2.new(0, 120, 0, 40)
+	billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = cardInstance
+	billboard.Parent = espGui
+
+	local textLabel = Instance.new("TextLabel")
+	textLabel.Size = UDim2.new(1, 0, 1, 0)
+	textLabel.BackgroundTransparency = 1
+	textLabel.Text = tostring(cardType)
+	textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	textLabel.TextSize = 18
+	textLabel.Font = Enum.Font.SourceSansBold
+	textLabel.TextStrokeTransparency = 0
+	textLabel.Parent = billboard
+
+	local renderConnection = RunService.RenderStepped:Connect(function()
+		if not espEnabled or not cardInstance or not cardInstance.Parent or not cardInstance:IsDescendantOf(Workspace) or not isCardVisible(cardInstance) then
+			removeSingleEsp(cardInstance)
+			return
+		end
+
+		local cardPos = getCardPosition(cardInstance)
+		if cardPos then
+			beacon.CFrame = CFrame.new(cardPos + Vector3.new(0, 150, 0))
+			if playerClone then
+				playerClone:PivotTo(CFrame.new(cardPos + Vector3.new(0, 2.5, 0)))
+			end
+		end
+
+		local hue = (tick() * 2) % 1
+		textLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
+	end)
+
+	local ancestryConnection = cardInstance.AncestryChanged:Connect(function()
+		if not cardInstance:IsDescendantOf(Workspace) then
+			removeSingleEsp(cardInstance)
+		end
+	end)
+
+	activeEspConnections[cardInstance] = {
+		CardType = upperType,
+		Billboard = billboard,
+		Highlight = highlight,
+		Beacon = beacon,
+		Sparkles = sparkles,
+		PointLight = pointLight,
+		PlayerClone = playerClone,
+		RenderConnection = renderConnection,
+		AncestryConnection = ancestryConnection
+	}
+end
+
+-- Monitoramento exclusivo do Evento CardRevealed
+task.spawn(function()
+	local memoryKill = ReplicatedStorage:WaitForChild("MemoryKill", 5)
+	if memoryKill then
+		local remotes = memoryKill:WaitForChild("Remotes", 5)
+		if remotes then
+			local cardRevealed = remotes:WaitForChild("CardRevealed", 5)
+			if cardRevealed then
+				cardRevealed.OnClientEvent:Connect(function(cardId, cardType)
+					if not espEnabled then return end
+
+					local targetCard = findExactCard(cardId)
+					if targetCard then
+						createCardEsp(targetCard, cardType)
+					end
+				end)
+			end
+		end
+	end
+end)
